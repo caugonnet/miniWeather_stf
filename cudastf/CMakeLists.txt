@@ -6,8 +6,8 @@ include(cmake/CPM.cmake)
 # This will automatically clone CCCL from GitHub and make the exported cmake targets available
 CPMAddPackage(
     NAME CCCL
-    GITHUB_REPOSITORY alliepiper/cccl
-    GIT_TAG cudastf
+    GITHUB_REPOSITORY nvidia/cccl
+    GIT_TAG main
     # The following is required to make the `CCCL::cudax` target available:
     OPTIONS "CCCL_ENABLE_UNSTABLE ON"
 )
@@ -20,7 +20,6 @@ endif()
 # If you're building an executable
 add_executable(miniWeather_cudastf miniWeather_cudastf.cu)
 
-target_compile_definitions(miniWeather_cudastf PUBLIC CUDASTF_PROVIDE_MDSPAN)
 target_link_libraries(miniWeather_cudastf PUBLIC cuda)
 
 if (CMAKE_CUDA_COMPILER)
