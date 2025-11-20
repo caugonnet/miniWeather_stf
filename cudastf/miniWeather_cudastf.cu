@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
     if (argc >= 5) {
         int use_gpu = atoi(argv[4]);
         switch (use_gpu) {
-        case 0: where = exec_place::host; break;
+        case 0: where = exec_place::host(); break;
         case 1: where = exec_place::current_device(); break;
         case 2: where = exec_place::all_devices(); break;
         case 3: where = exec_place::repeat(exec_place::current_device(), 8); break;
@@ -326,7 +326,7 @@ void semi_discrete_step(exec_place& where, context& ctx, state_t& state_init, st
     ctx.parallel_for(policy(), where, tend.l.shape(), state_out.l.write(), state_init.l.read(), tend.l.read())
                     .set_symbol("apply tend")
                     ->*[=] __host__ __device__(size_t i, size_t k, size_t ll, slice<double, 3> dstate_out,
-                               slice<double, 3> dstate_init, slice<double, 3> dtend) {
+                               slice<const double, 3> dstate_init, slice<const double, 3> dtend) {
                             dstate_out(i + hs, k + hs, ll) = dstate_init(i + hs, k + hs, ll) + dt * dtend(i, k, ll);
                         };
 }
@@ -352,8 +352,8 @@ void compute_tendencies_x(exec_place& where, context& ctx, state_t& state, tend_
                b.lhy_dens_theta_cell.read())
                     .set_symbol("comp_tend_x")
                     ->*
-            [=] __host__ __device__(size_t i, size_t k, slice<double, 3> dstate, slice<double, 3> dflux,
-                    slice<double> hy_dens_cell, slice<double> hy_dens_theta_cell) {
+            [=] __host__ __device__(size_t i, size_t k, slice<const double, 3> dstate, slice<double, 3> dflux,
+                    slice<const double> hy_dens_cell, slice<const double> hy_dens_theta_cell) {
                 double d3_vals[NUM_VARS], vals[NUM_VARS];
                 // Use fourth-order interpolation from four cell averages to compute the value at the interface in
                 // question
@@ -387,7 +387,7 @@ void compute_tendencies_x(exec_place& where, context& ctx, state_t& state, tend_
     // Use the fluxes to compute tendencies for each cell
     ctx.parallel_for(policy(), where, tend.l.shape(), tend.l.write(), lflux.read()).set_symbol("update_tend_x")
                     ->*
-            [=] __host__ __device__(size_t i, size_t k, size_t ll, slice<double, 3> dtend, slice<double, 3> dflux) {
+            [=] __host__ __device__(size_t i, size_t k, size_t ll, slice<double, 3> dtend, slice<const double, 3> dflux) {
                 dtend(i, k, ll) = -(dflux(i + 1, k, ll) - dflux(i, k, ll)) / dx_;
             };
 }
@@ -411,8 +411,8 @@ void compute_tendencies_z(exec_place& where, context& ctx, state_t& state, tend_
                b.lhy_dens_theta_int.read(), b.lhy_pressure_int.read())
                     .set_symbol("comp_tend_z")
                     ->*
-            [=] __host__ __device__(size_t i, size_t k, slice<double, 3> dstate, slice<double, 3> dflux,
-                    slice<double> hy_dens_int, slice<double> hy_dens_theta_int, slice<double> hy_pressure_int) {
+            [=] __host__ __device__(size_t i, size_t k, slice<const double, 3> dstate, slice<double, 3> dflux,
+                    slice<const double> hy_dens_int, slice<const double> hy_dens_theta_int, slice<const double> hy_pressure_int) {
                 double d3_vals[NUM_VARS], vals[NUM_VARS];
                 // Use fourth-order interpolation from four cell averages to compute the value at the interface in
                 // question
@@ -445,7 +445,7 @@ void compute_tendencies_z(exec_place& where, context& ctx, state_t& state, tend_
     ctx.parallel_for(policy(), where, tend.l.shape(), tend.l.write(), lflux.read(), state.l.read())
                     .set_symbol("update_tend_z")
                     ->*[=] __host__ __device__(size_t i, size_t k, size_t ll, slice<double, 3> dtend,
-                               slice<double, 3> dflux, slice<double, 3> dstate) {
+                               slice<const double, 3> dflux, slice<const double, 3> dstate) {
                             dtend(i, k, ll) = -(dflux(i, k + 1, ll) - dflux(i, k, ll)) / dz_;
 
                             if (ll == ID_WMOM) {
@@ -474,8 +474,8 @@ void set_halo_values_x(exec_place& where, context& ctx, state_t& state, boundari
                    policy(), where, box(nz, hs), state.l.rw(), b.lhy_dens_cell.read(), b.lhy_dens_theta_cell.read())
                         .set_symbol("set halo x(2)")
                         ->*
-                [=] __host__ __device__(size_t k, size_t i, slice<double, 3> dstate, slice<double> hy_dens_cell,
-                        slice<double> hy_dens_theta_cell) {
+                [=] __host__ __device__(size_t k, size_t i, slice<double, 3> dstate, slice<const double> hy_dens_cell,
+                        slice<const double> hy_dens_theta_cell) {
                     double z = ((double) k_beg_ + (double) k + 0.5) * dz_;
                     if (fabs(z - 3.0 * zlen / 4.0) <= zlen / 16.0) {
                         dstate(i, k + hs, ID_UMOM) = (dstate(i, k + hs, ID_DENS) + hy_dens_cell(k + hs)) * 50.;
@@ -577,7 +577,7 @@ void init(exec_place& where, context& ctx, state_t& state, state_t& state_tmp, b
                     .set_symbol("init_fluid_cells")
                     ->*
             [=] __host__ __device__(
-                    size_t i, size_t k, slice<double, 3> hstate, slice<double> qweights, slice<double> qpoints) {
+                    size_t i, size_t k, slice<double, 3> hstate, slice<const double> qweights, slice<const double> qpoints) {
                 // Initialize the state to zero
                 for (size_t ll = 0; ll < NUM_VARS; ll++) {
                     hstate(i, k, ll) = 0.;
@@ -604,7 +604,7 @@ void init(exec_place& where, context& ctx, state_t& state, state_t& state_tmp, b
 
     ctx.parallel_for(policy(), where, state.l.shape(), state.l.read(), state_tmp.l.write())
                     .set_symbol("init_fluid_cells_cpy")
-                    ->*[] __host__ __device__(size_t i, size_t k, size_t ll, slice<double, 3> hstate,
+                    ->*[] __host__ __device__(size_t i, size_t k, size_t ll, slice<const double, 3> hstate,
                                slice<double, 3> hstate_tmp) { hstate_tmp(i, k, ll) = hstate(i, k, ll); };
 
     // Compute the hydrostatic background state over vertical cell averages
@@ -679,7 +679,7 @@ __host__ __device__ void hydro_const_theta(double z, double& r, double& t) {
 // If it's too cumbersome, you can comment the I/O out, but you'll miss out on some potentially cool graphics
 void output(context& ctx, state_t& state, boundaries_t& b, double etime) {
     ctx.host_launch(state.l.read(), b.lhy_dens_cell.read(), b.lhy_dens_theta_cell.read())
-                    ->*[=](slice<double, 3> hstate, slice<double> hy_dens_cell, slice<double> hy_dens_theta_cell) {
+                    ->*[=](slice<const double, 3> hstate, slice<const double> hy_dens_cell, slice<const double> hy_dens_theta_cell) {
                             int ncid, t_dimid, x_dimid, z_dimid, dens_varid, uwnd_varid, wwnd_varid, theta_varid,
                                     t_varid, dimids[3];
                             int i, k;
